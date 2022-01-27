@@ -11,13 +11,13 @@ from tensorflow.keras.callbacks import ModelCheckpoint
 # if the dataset is still to be formatted, turn this to true
 DATASET_TO_FORMAT = False
 TRAINING = False
+
 scaler = MinMaxScaler()
 
 
-# this function checks for format issues and, if it founds them, resolves and re-write the correct dataset.
+# this function checks for format issues and, if it finds them, resolves and re-write the correct dataset.
 # otherwise, reads data and returns it in a normalized version.
 def get_right_data(path):
-
     data = pd.read_csv(path, date_parser=True)
     data.tail()
 
@@ -40,6 +40,7 @@ def get_right_data(path):
 
     # flipping data (reversing rows), to have a crescent set of tuples wrt their dates
     data = np.flipud(data)
+    dates = np.flipud(dates)
 
     # scaling data in order to have a normalized dataset to work on
     data = scaler.fit_transform(data)
@@ -48,7 +49,6 @@ def get_right_data(path):
 
 
 def split_data(percentage, dates, data):
-
     threshold = int(dates.shape[0] * percentage)
 
     training_dates = dates[:threshold]
@@ -97,7 +97,6 @@ def train(model, X_train, Y_train, command):
 
 
 def run():
-
     # getting normalized data for training and test values
     dates, data = get_right_data('deliveries/dataset/bitcoin_price_Training - Training.csv')
 
@@ -137,23 +136,28 @@ def run():
     X_test = []
     Y_test = []
 
-    for i in range (60, inputs.shape[0]):
-        X_test.append(inputs[i-60:i])
+    for i in range(60, inputs.shape[0]):
+        X_test.append(inputs[i - 60:i])
         Y_test.append(inputs[i, 0])
 
     X_test, Y_test = np.array(X_test), np.array(Y_test)
     Y_pred = model.predict(X_test)
 
     scale = 1 / scaler.scale_[0]
-    Y_test = Y_test*scale
-    Y_pred = Y_pred*scale
+    Y_test = Y_test * scale
+    Y_pred = Y_pred * scale
 
     plt.figure(figsize=(14, 5))
-    plt.plot(Y_test, color = 'red', label='Real Bitcoin Price')
-    plt.plot(Y_pred, color = 'green', label='Predicted Bitcoin Price')
+    plt.plot(Y_test, color='red', label='Real Bitcoin Price')
+    plt.plot(Y_pred, color='green', label='Predicted Bitcoin Price')
+
+    # setting the division of X-axis, in order to print only some dates and not overload the axis
+    date_tick = np.arange(0, len(test_dates) + 1, 50)
+    plt.xticks(date_tick, test_dates[date_tick])
+
     plt.title('Bitcoin Price Prediction using RNN-LSTM')
-    plt.xlabel('Time')
-    plt.ylabel('Price')
+    plt.xlabel('Time [Day]')
+    plt.ylabel('Price [$]')
     plt.legend()
     plt.show()
 
