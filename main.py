@@ -1,3 +1,5 @@
+from management import *  # importing environmental variables from management.py
+
 import os
 
 import numpy as np
@@ -8,14 +10,11 @@ from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Dense, LSTM, Dropout
 from tensorflow.keras.callbacks import ModelCheckpoint
 
-# if the dataset is still to be formatted, turn this to true
-DATASET_TO_FORMAT = False
-TRAINING = False
 
 scaler = MinMaxScaler()
 
 
-# this function checks for format issues and, if it finds them, resolves and re-write the correct dataset.
+# This function checks for format issues and, if it finds them, resolves and re-write the correct dataset.
 # otherwise, reads data and returns it in a normalized version.
 def get_right_data(path):
     data = pd.read_csv(path, date_parser=True)
@@ -48,8 +47,11 @@ def get_right_data(path):
     return dates, data
 
 
-def split_data(percentage, dates, data):
-    threshold = int(dates.shape[0] * percentage)
+def split_data(dates, data):
+    if SPLIT_PERCENTAGE < 0 or SPLIT_PERCENTAGE > 1:
+        return
+
+    threshold = int(dates.shape[0] * SPLIT_PERCENTAGE)
 
     training_dates = dates[:threshold]
     training_data = data[:threshold, :]
@@ -60,17 +62,24 @@ def split_data(percentage, dates, data):
     return training_dates, training_data, test_dates, test_data
 
 
+# Construct blocks of size "block_size" shifting by 1 sample each time.
+def build_batches(data, block_size, field_to_predict):
+    x = []
+    y = []
+    for i in range(block_size, data.shape[0]):
+        x.append(data[i - block_size:i])
+        y.append(data[i, field_to_predict])
+    x, y = np.array(x), np.array(y)
+    return x, y
+
+
 def print_losses(history):
+
     if history is None:
         return
 
-    # training loss -> indicates how well the model fits the already seen data
     loss = history.history['loss']
-    # validation loss -> indicates how well the model predicts new data
     val_loss = history.history['val_loss']
-
-    # if tr_loss >> val_loss : overfitting (no good prediction ability)
-    # if tr_loss << val_loss : underfitting (the model is still too simple and generalized->probably needs more training)
 
     epochs = range(len(loss))
     plt.figure()
@@ -82,15 +91,15 @@ def print_losses(history):
 
 
 # todo: try to save also the history when 'restore'
-def train(model, X_train, Y_train, command):
+def train(model, X_train, Y_train):
     history = None
-    if command == 'train':
+    if TRAINING:
         checkpoint_path = "training/cp.ckpt"
-        # Create a callback that saves the model's weights
+        # Create a callback that saves the model's weights and biases
         cp_callback = ModelCheckpoint(filepath=checkpoint_path, save_weights_only=True, verbose=1)
         history = model.fit(X_train, Y_train, epochs=20, batch_size=50, validation_split=0.1, callbacks=[cp_callback])
 
-    if command == 'restore':
+    else:
         model.load_weights("training/cp.ckpt").expect_partial()
 
     return history
@@ -98,18 +107,11 @@ def train(model, X_train, Y_train, command):
 
 def run():
     # getting normalized data for training and test values
-    dates, data = get_right_data('deliveries/dataset/bitcoin_price_Training - Training.csv')
+    dates, data = get_right_data(path=DATASET_PATH)
 
-    training_dates, training_data, test_dates, test_data = split_data(percentage=0.8, dates=dates, data=data)
+    training_dates, training_data, test_dates, test_data = split_data(dates=dates, data=data)
 
-    X_train = []
-    Y_train = []
-
-    for i in range(60, training_data.shape[0]):
-        X_train.append(training_data[i - 60:i])
-        Y_train.append(training_data[i, 0])
-
-    X_train, Y_train = np.array(X_train), np.array(Y_train)
+    X_train, Y_train = build_batches(data=training_data, block_size=60, field_to_predict=0)
 
     # Initialize the RNN
     model = Sequential()
@@ -122,44 +124,41 @@ def run():
     model.add(LSTM(units=140, activation='relu'))
     model.add(Dropout(0.5))
     model.add(Dense(units=1))
-    model.summary()
+
+    if PRINT_ARCHITECTURE:
+        model.summary()
 
     model.compile(optimizer='adam', loss='mean_squared_error')
 
-    history = train(model, X_train, Y_train, 'restore')
-
-    print_losses(history)
+    history = train(model, X_train, Y_train)
+    if PRINT_LOSSES:
+        print_losses(history)
 
     part_60_days = training_data[-60:, :]
     inputs = np.append(part_60_days, test_data, axis=0)
 
-    X_test = []
-    Y_test = []
+    X_test, Y_test = build_batches(data=inputs, block_size=60, field_to_predict=0)
 
-    for i in range(60, inputs.shape[0]):
-        X_test.append(inputs[i - 60:i])
-        Y_test.append(inputs[i, 0])
-
-    X_test, Y_test = np.array(X_test), np.array(Y_test)
     Y_pred = model.predict(X_test)
 
     scale = 1 / scaler.scale_[0]
     Y_test = Y_test * scale
     Y_pred = Y_pred * scale
 
-    plt.figure(figsize=(14, 5))
-    plt.plot(Y_test, color='red', label='Real Bitcoin Price')
-    plt.plot(Y_pred, color='green', label='Predicted Bitcoin Price')
+    if PRINT_PREDICTION:
+        plt.figure(figsize=(14, 5))
+        plt.plot(Y_test, color='red', label='Real Bitcoin Price')
+        plt.plot(Y_pred, color='green', label='Predicted Bitcoin Price')
 
-    # setting the division of X-axis, in order to print only some dates and not overload the axis
-    date_tick = np.arange(0, len(test_dates) + 1, 50)
-    plt.xticks(date_tick, test_dates[date_tick])
+        # setting the division of X-axis, in order to print only some dates and not overload the axis
+        date_tick = np.arange(0, len(test_dates) + 1, 50)
+        plt.xticks(date_tick, test_dates[date_tick])
 
-    plt.title('Bitcoin Price Prediction using RNN-LSTM')
-    plt.xlabel('Time [Day]')
-    plt.ylabel('Price [$]')
-    plt.legend()
-    plt.show()
+        plt.title('Bitcoin Price Prediction using RNN-LSTM')
+        plt.xlabel('Time [Day]')
+        plt.ylabel('Price [$]')
+        plt.legend()
+        plt.show()
 
 
 if __name__ == '__main__':
