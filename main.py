@@ -105,6 +105,16 @@ def train(model, X_train, Y_train):
     return history
 
 
+def calculate_accuracy(y, y_pred):
+    error = 0
+
+    for i in range(len(y)):
+        error += np.abs(y[i] - y_pred[i]) / y[i] * 100
+    error = error / len(y)
+
+    return 100 - error
+
+
 def run():
     # getting normalized data for training and test values
     dates, data = get_right_data(path=DATASET_PATH)
@@ -144,6 +154,10 @@ def run():
     scale = 1 / scaler.scale_[0]
     Y_test = Y_test * scale
     Y_pred = Y_pred * scale
+
+    if PRINT_FINAL_ACCURACY:
+        accuracy = calculate_accuracy(Y_test, Y_pred)
+        print("Accuracy of the prediction: " + str(accuracy[0]) + " % ")
 
     if PRINT_PREDICTION:
         plt.figure(figsize=(14, 5))
