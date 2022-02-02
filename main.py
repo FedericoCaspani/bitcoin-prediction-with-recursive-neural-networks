@@ -94,13 +94,13 @@ def print_losses(history):
 def train(model, X_train, Y_train):
     history = None
     if TRAINING:
-        checkpoint_path = "training/cp.ckpt"
+        checkpoint_path = "saved_knowledge/cp.ckpt"
         # Create a callback that saves the model's weights and biases
         cp_callback = ModelCheckpoint(filepath=checkpoint_path, save_weights_only=True, verbose=1)
         history = model.fit(X_train, Y_train, epochs=20, batch_size=50, validation_split=0.1, callbacks=[cp_callback])
 
     else:
-        model.load_weights("training/cp.ckpt").expect_partial()
+        model.load_weights("saved_knowledge/cp.ckpt").expect_partial()
 
     return history
 
